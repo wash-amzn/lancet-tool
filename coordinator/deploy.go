@@ -26,8 +26,10 @@ package main
 import (
 	"fmt"
 	"golang.org/x/crypto/ssh"
+	sshagent "golang.org/x/crypto/ssh/agent"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/user"
 	"path"
@@ -43,6 +45,23 @@ func publicKeyFile(file string) (ssh.AuthMethod, error) {
 		return nil, err
 	}
 	return ssh.PublicKeys(key), nil
+}
+
+func publicKeyAgent() (ssh.AuthMethod, error) {
+	sockpath, ok := os.LookupEnv("SSH_AUTH_SOCK")
+	if !ok {
+		return nil, fmt.Errorf("SSH_AUTH_SOCK environment variable is not set")
+	}
+	sock, err := net.Dial("unix", sockpath)
+	if err != nil {
+		return nil, fmt.Errorf("Error openning ssh agent socket %s: %s\n", sockpath, err)
+	}
+	agentsock := sshagent.NewClient(sock)
+	signers, err := agentsock.Signers()
+	if err != nil {
+		return nil, fmt.Errorf("Error communicating with ssh agent: %s\n", err)
+	}
+	return ssh.PublicKeys(signers...), nil
 }
 
 func createSession(connection *ssh.Client) (*ssh.Session, error) {
@@ -93,14 +112,20 @@ func configIO(session *ssh.Session) error {
 
 func runAgent(dst, privateKey string, args string) (*ssh.Session, error) {
 	currentUser, _ := user.Current()
-	keyFile, err := publicKeyFile(privateKey)
+	var sshauth ssh.AuthMethod
+	var err error
+	if privateKey != "" {
+		sshauth, err = publicKeyFile(privateKey)
+	} else {
+		sshauth, err = publicKeyAgent()
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	sshConfig := &ssh.ClientConfig{
 		User:            currentUser.Username,
-		Auth:            []ssh.AuthMethod{keyFile},
+		Auth:            []ssh.AuthMethod{sshauth},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 

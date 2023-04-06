@@ -82,6 +82,7 @@ func ParseConfig() (*ServerConfig, *ExperimentConfig, *GeneralConfig, error) {
 	var ciSize = flag.Int("ciSize", 10, "size of 95-confidence interval in us")
 	var nicTS = flag.Bool("nicTS", false, "NIC timestamping for symmetric agents")
 	var privateKey = flag.String("privateKey", id_rsa_path, "location of the (local) private key to deploy the agents. Will find a default if not specified")
+	var useSshAgent = flag.Bool("useSshAgent", false, "Use SSH agent to authenticate to deploy the agents. Overrides -privateKey")
 	var ifName = flag.String("ifName", "enp65s0", "interface name for hardware timestamping")
 	var reqPerConn = flag.Int("reqPerConn", 1, "Number of outstanding requests per TCP connection")
 	var runAgents = flag.Bool("runAgents", true, "Automatically run agents")
@@ -93,7 +94,9 @@ func ParseConfig() (*ServerConfig, *ExperimentConfig, *GeneralConfig, error) {
 	expCfg := &ExperimentConfig{}
 	generalCfg := &GeneralConfig{}
 
-	if *runAgents {
+	if *useSshAgent {
+		*privateKey = ""
+	} else if *runAgents {
 		if x, err := os.Stat(*privateKey); err != nil {
 			fmt.Printf("Unable to find private ssh key at path '%s'\n", *privateKey)
 			return nil, nil, nil, err
